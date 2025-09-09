@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local LLM Chat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <header>
+            <span>Local LLM Chat 🚀</span>
+            <button id="theme-switcher">🌙</button>
+        </header>
+
+        <div class="chat-history" id="chatHistory">
+            </div>
+
+        <div class="user-input">
+            <input type="text" id="promptInput" placeholder="Ask something...">
+            <button id="sendButton" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const promptInput = document.getElementById('promptInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatHistory = document.getElementById('chatHistory');
+        const themeSwitcher = document.getElementById('theme-switcher');
+
+        let conversationHistory = [];
+
+        // --- Theme Switcher Logic ---
+        themeSwitcher.addEventListener('click', () => {
+            const currentTheme = document.body.getAttribute('data-theme');
+            if (currentTheme === 'dark') {
+                document.body.removeAttribute('data-theme');
+                themeSwitcher.innerText = '🌙'; // Moon for dark mode
+            } else {
+                document.body.setAttribute('data-theme', 'dark');
+                themeSwitcher.innerText = '☀️'; // Sun for light mode
+            }
+        });
+
+        // --- Append a message to the chat history UI ---
+        function appendMessage(role, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', role);
+            messageDiv.innerText = text;
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight; // Auto-scroll
+            return messageDiv;
+        }
+
+        // --- Main function to send a message ---
+        async function sendMessage() {
+            const prompt = promptInput.value.trim();
+            if (!prompt) return;
+
+            sendButton.disabled = true;
+            promptInput.value = '';
+
+            // Add user message to UI and history
+            appendMessage('user', prompt);
+            conversationHistory.push({ role: 'user', content: prompt });
+            
+            // Add a placeholder for the model's response
+            const modelMessageDiv = appendMessage('model', '...');
+            
+            try {
+                const response = await fetch('https://redhog.hf.space/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // Send the entire conversation history
+                    body: JSON.stringify({ messages: conversationHistory })
+                });
+
+                if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                modelMessageDiv.innerText = ''; // Clear the '...'
+                let fullResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value, { stream: true });
+                    fullResponse += chunk;
+                    modelMessageDiv.innerText = fullResponse;
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                }
+                
+                // Add the final model response to history
+                conversationHistory.push({ role: 'assistant', content: fullResponse });
+
+            } catch (error) {
+                modelMessageDiv.innerText = `Error: ${error.message}`;
+                console.error('API call failed:', error);
+            } finally {
+                sendButton.disabled = false;
+                promptInput.focus();
+            }
+        }
+
+        // --- Allow pressing Enter to send ---
+        promptInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
